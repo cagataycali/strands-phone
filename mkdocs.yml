@@ -1,0 +1,57 @@
+site_name: strands-phone
+site_url: https://cagataycali.github.io/strands-phone/
+site_description: A real phone number that rings a Strands BidiAgent.
+repo_url: https://github.com/cagataycali/strands-phone
+repo_name: cagataycali/strands-phone
+edit_uri: edit/main/docs/
+strict: true
+docs_dir: docs
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  font: false
+  logo: assets/img/mark.svg
+  favicon: assets/img/mark.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: paper
+      primary: custom
+      accent: custom
+      toggle: {icon: material/weather-night, name: Dark}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle: {icon: material/weather-sunny, name: Paper}
+  features: [navigation.indexes, navigation.top, navigation.tracking, content.code.copy, search.suggest, search.highlight, toc.follow]
+
+extra_css: [stylesheets/extra.css]
+extra_javascript: [assets/site.js]
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cagataycali/strands-phone
+
+plugins: [search]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: {title: On this page, permalink: true, toc_depth: 3}
+  - pymdownx.highlight: {anchor_linenums: true, pygments_lang_class: true}
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - How it works: how-it-works.md
+  - Models: models.md
+  - Design: design.md

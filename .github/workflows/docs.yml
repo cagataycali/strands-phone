@@ -1,0 +1,19 @@
+name: docs
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, design/**, overrides/**, mkdocs.yml, .github/workflows/docs.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install "mkdocs>=1.6,<2" "mkdocs-material==9.7.7"
+      - run: python3 design/drawings/scene.py --all --verify   # committed SVGs must match their scenes
+      - run: python3 design/drawings/scene.py --all --check docs
+      - run: mkdocs gh-deploy --force --strict

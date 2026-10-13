@@ -1,0 +1,39 @@
+{% set install = 'git clone ' ~ config.repo_url ~ ' && cd strands-phone && infra/up.sh && deploy/deploy.sh' %}
+{% set columns = [
+  ("Start", [("Quickstart", "quickstart/"), ("How it works", "how-it-works/")]),
+  ("Build", [("Models", "models/"), ("Design", "design/")]),
+  ("Reference", [("README.md", config.repo_url ~ "/blob/main/README.md")]),
+  ("Community", [("GitHub", config.repo_url), ("Strands Agents", "https://strandsagents.com/"), ("Discord", "https://discord.gg/strands")]),
+] %}
+<div class="sr-cta"><div class="sr-cta__panel">
+  <p class="sr-cta__title">Call your agent. It calls you back.</p>
+  <p class="sr-cta__links">
+    <a href="{{ 'quickstart/' | url }}">Quickstart &rarr;</a>
+    <a href="{{ 'how-it-works/' | url }}">How it works &rarr;</a>
+    <a href="{{ config.repo_url }}">Source &rarr;</a>
+  </p>
+</div></div>
+<footer class="md-footer sr-footer">
+  <div class="sr-footer__inner md-grid">
+    <p class="sr-footer__kicker">Start building in seconds</p>
+    <p class="sr-install sr-install--footer">{{ install }}<button class="sr-copy" type="button" data-clipboard-text="{{ install | e }}">copy</button></p>
+    <div class="sr-footer__columns">
+      {% for title, links in columns %}
+        <div>
+          <p class="sr-footer__heading">{{ title }}</p>
+          <ul>
+            {% for label, href in links %}
+              <li><a href="{{ href if href.startswith('http') else href | url }}">{{ label }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="sr-footmark" aria-hidden="true">{% include "partials/wordmark.svg" %}</div>
+  <div class="sr-footer__legal md-grid">
+    <span>Built with <a href="https://strandsagents.com/">Strands Agents</a>. Not an official AWS project.</span>
+    <a href="{{ config.repo_url }}/blob/main/LICENSE">License</a>
+  </div>
+  <p class="sr-footer__copyright md-grid">&copy; {{ build_date_utc.year }} strands-phone contributors. Apache License 2.0.</p>
+</footer>

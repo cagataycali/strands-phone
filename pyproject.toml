@@ -1,0 +1,54 @@
+[project]
+name = "strands-phone"
+version = "0.1.0"
+description = "A real phone number that rings a Strands BidiAgent: Chime SDK Voice Connector, SIP/RTP, Nova 2 Sonic or gpt-realtime-2"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "strands-phone contributors" }]
+keywords = ["strands-agents", "voice-agent", "telephony", "sip", "rtp", "nova-sonic", "openai-realtime", "speech-to-speech"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications :: Telephony",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+requires-python = ">=3.12"
+dependencies = ["strands-agents[bidi]>=1.60.0,<2"]
+
+[project.optional-dependencies]
+openai = ["strands-agents[bidi-openai]>=1.60.0,<2"]
+dev = ["pytest>=8", "ruff>=0.6"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material==9.7.7"]
+
+[project.urls]
+Documentation = "https://cagataycali.github.io/strands-phone/"
+Source = "https://github.com/cagataycali/strands-phone"
+Issues = "https://github.com/cagataycali/strands-phone/issues"
+
+[project.scripts]
+strands-phone = "strands_phone.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["strands_phone"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"design/**" = ["E501"]  # drawings are coordinate data

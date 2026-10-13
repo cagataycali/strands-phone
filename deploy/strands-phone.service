@@ -1,0 +1,16 @@
+[Unit]
+Description=strands-phone: answer calls to the Voice Connector number with a Strands BidiAgent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/strands-phone
+EnvironmentFile=/etc/strands-phone.env
+ExecStart=/home/ubuntu/venv/bin/strands-phone answer
+# one call per process: exit after a call, systemd starts the next listener
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

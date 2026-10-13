@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ page.title if page.title else config.site_name }} | strands-phone">
+  <meta property="og:description" content="{{ config.site_description }}">
+  <meta name="twitter:card" content="summary">
+{% endblock %}
+
+{% block content %}
+  {% if page.meta and page.meta.template_class %}
+    <div class="{{ page.meta.template_class }}">{{ super() }}</div>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}
