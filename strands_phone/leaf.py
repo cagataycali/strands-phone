@@ -279,7 +279,7 @@ def build_tools(call: Call, gate: ConfirmGate, client: LeafClient, images: bool 
         keep = ("status", "state", "mode", "input_mode", "fault", "error_mode", "message", "off_robot", "unreachable")
         return {
             **{k: st[k] for k in keep if k in st},
-            "battery_pct": bat.get("percent", bat.get("pct", bat.get("soc"))),
+            "battery_pct": bat.get("soc_pct", bat.get("percent")),
             "charging": bat.get("charging"),
         }
 

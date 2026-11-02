@@ -50,7 +50,7 @@ class FakeLeaf:
                     return self._send(403, {"status": "error", "scope": "phone"})
                 r = {
                     ("GET", "/api/robot/state"): {"status": "success", "state": "ACTIVE", "mode": "walk"},
-                    ("GET", "/api/robot/telemetry"): {"battery": {"percent": 64, "charging": False}},
+                    ("GET", "/api/robot/telemetry"): {"battery": {"soc_pct": 64.0, "charging": False}},
                     ("GET", "/api/robot/modes"): {
                         "available": [{"mode": "walk", "name": "Walk"}, {"mode": "party_dance", "name": "Party dance"}]
                     },
@@ -411,6 +411,12 @@ def test_scripted_call_against_a_real_leaf_dashboard(tmp_path):
     """E2E: the same call against a running LEAF dashboard (Mac testbed via a Cloudflare quick tunnel). Off-robot the
     robot tools answer honestly (off_robot / not moved); the point is auth, scope, gate and stop end to end."""
     url, token = os.environ["LEAF_E2E_URL"], os.environ["LEAF_E2E_TOKEN"]
+    if pin := os.environ.get("LEAF_E2E_RESOLVE"):  # "host:ip" for networks whose DNS blocks trycloudflare.com
+        import socket
+
+        host, ip = pin.rsplit(":", 1)
+        real = socket.getaddrinfo
+        pytest.MonkeyPatch().setattr(socket, "getaddrinfo", lambda h, *a, **k: real(ip if h == host else h, *a, **k))
     code = os.environ.get("LEAF_PHONE_CONFIRM_CODE") or CODE
     script = [
         (s[0], s[1], {"code": code}) if s[0] == "tool" and s[1] == "confirm" and s[2]["code"] == CODE else s
