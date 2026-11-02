@@ -62,6 +62,24 @@ set -a; . /etc/strands-phone.env; set +a
 
 Put `MODEL_PROVIDER=openai` and `OPENAI_API_KEY` in `.secrets.env` (gitignored), then run `deploy/deploy.sh`.
 
+## LEAF: call a robot
+
+`PHONE_PERSONA=leaf` makes the line answer as LEAF, a Fauna Sprout humanoid, in the first person
+([strands_phone/leaf.py](strands_phone/leaf.py)). Its tools (state, look, modes, behaviours, walk, turn) call the LEAF
+dashboard at `LEAF_URL` with a scoped `LEAF_PHONE_TOKEN` that the dashboard only accepts on those routes and STOP.
+
+- **Caller ID policy.** A call from a number in `LEAF_PHONE_OWNER_NUMBERS` (comma list, any format, normalised to
+  E.164; set it in the host env, never in git) is the owner: every robot tool works with no key, `confirm` says it is
+  not needed, and stop works. Every other caller, including a withheld number, is a stranger.
+- For a stranger every robot tool answers "please provide a confirmation key" until `confirm(code)` matches
+  `LEAF_PHONE_CONFIRM_CODE` in this call. Three wrong keys lock confirm for the rest of the call. The key is never logged.
+- A stranger can't stop the robot either, by `stop_moving` or by saying "stop", until they confirm. Once they have,
+  a spoken "stop" stops the robot before the model hears it. `hang_up` always works.
+- **Caller ID is spoofable.** Anyone who can send a call with the owner's number in the SIP From header gets the
+  owner's access. It saves the owner typing a key on his own phone. It is not authentication. Leave
+  `LEAF_PHONE_OWNER_NUMBERS` empty if that risk is not acceptable.
+- There is no damp tool. Unset `PHONE_PERSONA` (or `default`) and redeploy to get the plain agent back.
+
 ## Design
 
 <picture>

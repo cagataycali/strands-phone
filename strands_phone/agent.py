@@ -56,7 +56,38 @@ def default_prompt(model_id: str, inbound: bool) -> str:
     )
 
 
+def persona() -> str:
+    """PHONE_PERSONA=default (the original line: time + hang_up) or leaf (the caller talks to LEAF, a Sprout robot)."""
+    p = os.environ.get("PHONE_PERSONA", "default").strip().lower() or "default"
+    if p not in ("default", "leaf"):
+        raise ValueError(f"PHONE_PERSONA={p!r}: expected default or leaf")
+    return p
+
+
+def make_leaf_agent(call: Call, inbound: bool = False) -> BidiAgent:
+    from . import leaf
+
+    model = make_model()
+    client = leaf.LeafClient()
+    # inbound: the INVITE's From number (call.caller_number, E.164 or None = withheld); outbound calls are strangers
+    gate = leaf.ConfirmGate.for_caller(getattr(call, "caller_number", None) if inbound else None)
+    images = os.environ.get("MODEL_PROVIDER", "nova").lower() == "openai"  # Nova Sonic takes no images
+    call.leaf_gate = gate
+    call.mark("caller", owner=gate.owner)
+    if inbound:
+        call.greeting = leaf.greeting(gate.owner)
+    leaf.install_stop_hook(call, client, gate)
+    return BidiAgent(
+        model=model,
+        tools=leaf.build_tools(call, gate, client, images=images),
+        system_prompt=os.environ.get("SYSTEM_PROMPT") or leaf.leaf_prompt(inbound, owner_call=gate.owner),
+    )
+
+
 def make_agent(call: Call, inbound: bool = False) -> BidiAgent:
+    if persona() == "leaf":
+        return make_leaf_agent(call, inbound)
+
     @tool
     def current_time() -> str:
         """The current date and time where this line lives (TIMEZONE, default UTC)."""

@@ -17,3 +17,10 @@ this repository, not in a public issue. We aim to reply within 5 business days.
   `infra/down.sh` removes all of it.
 - **The agent can hang up** and has a `current_time` tool. Any tool you add can be invoked by anyone who calls the
   number, so treat tools as public endpoints.
+
+## LEAF persona: caller ID is not authentication
+
+With `PHONE_PERSONA=leaf`, calls from a number in `LEAF_PHONE_OWNER_NUMBERS` skip the confirmation key. The caller
+number comes from the SIP `From` header that the carrier passes through the Voice Connector, and callers can spoof it.
+Treat the owner bypass as a convenience. The robot-side limits still apply to everyone: the scoped phone token, no
+damp by phone, and STOP never damps.
