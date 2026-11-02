@@ -62,6 +62,17 @@ set -a; . /etc/strands-phone.env; set +a
 
 Put `MODEL_PROVIDER=openai` and `OPENAI_API_KEY` in `.secrets.env` (gitignored), then run `deploy/deploy.sh`.
 
+## LEAF: call a robot
+
+`PHONE_PERSONA=leaf` makes the line answer as LEAF, a Fauna Sprout humanoid, in the first person
+([strands_phone/leaf.py](strands_phone/leaf.py)). Its tools (state, look, modes, behaviours, walk, turn) call the LEAF
+dashboard at `LEAF_URL` with a scoped `LEAF_PHONE_TOKEN` that the dashboard only accepts on those routes and STOP.
+
+- Every robot tool answers "please provide a confirmation key" until `confirm(code)` matches `LEAF_PHONE_CONFIRM_CODE`
+  in this call. Three wrong keys lock confirm for the rest of the call. The key is never logged.
+- `stop_moving` and `hang_up` always work, and a caller's spoken "stop" stops the robot before the model hears it.
+- There is no damp tool. Unset `PHONE_PERSONA` (or `default`) and redeploy to get the plain agent back.
+
 ## Design
 
 <picture>

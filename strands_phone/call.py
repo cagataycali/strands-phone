@@ -93,6 +93,7 @@ class Call:
         self.hangup_after_audio = False
         self.live = False
         self.last_agent_audio = 0.0
+        self.on_user_transcript: Callable[[str], None] | None = None  # e.g. LEAF's spoken-stop hook (leaf.py)
 
     # timeline
     def mark(self, kind: str, **kw) -> None:
@@ -310,6 +311,11 @@ class Call:
                 self.mark("barge_in", dropped_ms=dropped)
             elif t == "bidi_transcript_block":
                 self.mark("transcript", role=ev["role"], text=repr(ev["transcript"]))
+                if ev["role"] == "user" and self.on_user_transcript:
+                    try:
+                        self.on_user_transcript(ev["transcript"])
+                    except Exception as e:  # a hook must never end the call
+                        log.warning("transcript hook: %s", e)
             elif t == "bidi_tool_use_blocks":
                 self.mark("tool_use", tools=[u.get("name") for u in ev.get("tool_uses", [])])
             elif t == "bidi_connection_restart":

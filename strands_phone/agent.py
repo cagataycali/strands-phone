@@ -56,7 +56,34 @@ def default_prompt(model_id: str, inbound: bool) -> str:
     )
 
 
+def persona() -> str:
+    """PHONE_PERSONA=default (the original line: time + hang_up) or leaf (the caller talks to LEAF, a Sprout robot)."""
+    p = os.environ.get("PHONE_PERSONA", "default").strip().lower() or "default"
+    if p not in ("default", "leaf"):
+        raise ValueError(f"PHONE_PERSONA={p!r}: expected default or leaf")
+    return p
+
+
+def make_leaf_agent(call: Call, inbound: bool = False) -> BidiAgent:
+    from . import leaf
+
+    model = make_model()
+    client = leaf.LeafClient()
+    gate = leaf.ConfirmGate()
+    images = os.environ.get("MODEL_PROVIDER", "nova").lower() == "openai"  # Nova Sonic takes no images
+    call.leaf_gate = gate
+    leaf.install_stop_hook(call, client)
+    return BidiAgent(
+        model=model,
+        tools=leaf.build_tools(call, gate, client, images=images),
+        system_prompt=os.environ.get("SYSTEM_PROMPT") or leaf.leaf_prompt(inbound),
+    )
+
+
 def make_agent(call: Call, inbound: bool = False) -> BidiAgent:
+    if persona() == "leaf":
+        return make_leaf_agent(call, inbound)
+
     @tool
     def current_time() -> str:
         """The current date and time where this line lives (TIMEZONE, default UTC)."""
