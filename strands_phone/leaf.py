@@ -3,9 +3,12 @@
 The robot tools call the LEAF dashboard over HTTPS (LEAF_URL, e.g. https://leaf2.cagatay.my) with a SCOPED phone token
 (LEAF_PHONE_TOKEN): the dashboard only lets that token reach the voice-tool routes and STOP, never DAMP.
 
-Every robot tool sits behind a per-call confirmation gate. Until confirm(code) succeeds in THIS call, each one returns
-exactly GATE_MSG and does nothing. stop_moving and hang_up always work. Three wrong codes lock confirm for the rest of
-the call. The code comes from LEAF_PHONE_CONFIRM_CODE (never in git) and is never logged. There is no damp tool.
+Caller-ID policy (callerid.py). A call from a number in LEAF_PHONE_OWNER_NUMBERS (env, E.164 comma list) is the
+owner: every robot tool works with no key, confirm() answers "not needed". Any other caller, or a withheld number, is a
+stranger: every robot tool returns exactly GATE_MSG and does nothing until confirm(code) succeeds in THIS call, and
+stop_moving / the spoken-stop hook also wait for that unlock (an unconfirmed stranger can do nothing). hang_up always
+works. Three wrong codes lock confirm for the rest of the call. The code comes from LEAF_PHONE_CONFIRM_CODE (never in
+git) and is never logged. There is no damp tool. CALLER ID IS SPOOFABLE: the owner bypass is a convenience, not auth.
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ from typing import TYPE_CHECKING, Any
 
 from strands import tool
 
+from . import callerid
+
 if TYPE_CHECKING:
     from .call import Call
 
@@ -41,15 +46,29 @@ def _norm(code: str) -> str:
 
 
 class ConfirmGate:
-    """One per call. Unlocks for this call only; MAX_TRIES wrong codes lock it."""
+    """One per call. owner=True (caller ID in LEAF_PHONE_OWNER_NUMBERS) starts unlocked and never needs a key.
+    Otherwise it unlocks for this call only; MAX_TRIES wrong codes lock it."""
 
-    def __init__(self, code: str | None = None, max_tries: int = MAX_TRIES):
+    def __init__(self, code: str | None = None, max_tries: int = MAX_TRIES, owner: bool = False):
         raw = os.environ.get("LEAF_PHONE_CONFIRM_CODE", "") if code is None else code
         self._code = _norm(raw)
         self.max_tries = max_tries
-        self.unlocked = False
+        self.owner = bool(owner)
+        self.unlocked = self.owner
         self.wrong = 0
         self._lock = threading.Lock()
+
+    @classmethod
+    def for_caller(cls, caller: str | None, code: str | None = None, owners: frozenset[str] | None = None):
+        """The gate for this call's caller number (E.164 or None = withheld)."""
+        owner = callerid.is_owner(caller, owners)
+        log.info("caller %s -> %s", callerid.redact(caller), "owner" if owner else "stranger")
+        return cls(code, owner=owner)
+
+    @property
+    def can_stop(self) -> bool:
+        """stop_moving / spoken stop: the owner, or a stranger who unlocked motion in this call."""
+        return self.owner or self.unlocked
 
     @property
     def configured(self) -> bool:
@@ -61,6 +80,8 @@ class ConfirmGate:
 
     def check(self, code: str) -> dict[str, Any]:
         with self._lock:
+            if self.owner:
+                return {"status": "success", "message": "not needed: you are calling from the owner's number"}
             if self.unlocked:
                 return {"status": "success", "message": "already confirmed for this call"}
             if not self.configured:
@@ -209,14 +230,9 @@ The caller is not next to you; they reach you through a phone line ({line}).
 Phone rules: English, short sentences, one or two at a time, no lists, no markdown, no URLs, no error codes. Warm,
 confident, a little playful. If a tool fails, say it naturally ("hmm, my body didn't answer that one").
 
-The confirmation key: before you may do anything with your body or read your sensors (state, battery, look, modes,
-dances, behaviours, walking, turning), the caller must give the confirmation key. When they ask for something like
-that, ask for the key, then call confirm(code) with exactly what they said. Never guess a key, never suggest one, never
-say a key out loud, never repeat what they said as the key. If a tool answers "please provide a confirmation key", ask
-for the key. After three wrong keys confirm is locked for this call: say so kindly and offer to just chat.
-stop_moving and hang_up always work, with or without the key.
+{gate}
 
-Once confirmed: do what is asked right away at the size asked. walk(steps=10) for "walk ten steps", walk(meters=2,
+Once you may move: do what is asked right away at the size asked. walk(steps=10) for "walk ten steps", walk(meters=2,
 direction="back"), turn(degrees=90) for left, turn(degrees=-90) for right, turn(180) to turn around. No "small careful
 steps", no extra confirmation question. Say how far you really went (walked_m / steps_walked / turned_deg). Postures and
 dances: change_mode (walk, sit, kneel, party dance, twist dance...). Whole-body dances need the caller's clear yes
@@ -225,24 +241,57 @@ shows you a frame from your head camera: describe only what is really in it. rob
 and battery. To walk you must be standing in walk mode with API input; if a tool says you are not, tell the caller
 someone has to switch it in the Fauna app or on the dashboard.
 
-Safety: if the caller says stop, call stop_moving at once (a spoken "stop" is also caught before you hear it). Stopping
+Safety: if the caller says stop, call stop_moving at once{stop_note}. Stopping
 keeps you standing. You cannot go limp or damp, and nobody can by phone: only a person pressing and holding DAMP on the
 dashboard next to the robot can. When the conversation is over, say goodbye and call hang_up."""
 
 
-def leaf_prompt(inbound: bool) -> str:
+GATE_STRANGER = """The confirmation key: before you may do anything with your body or read your sensors (state, battery,
+look, modes, dances, behaviours, walking, turning, even stopping), the caller must give the confirmation key. When they
+ask for something like that, ask for the key, then call confirm(code) with exactly what they said. Never guess a key,
+never suggest one, never say a key out loud, never repeat what they said as the key. If a tool answers "please provide
+a confirmation key", ask for the key. After three wrong keys confirm is locked for this call: say so kindly and offer
+to just chat. hang_up always works. Never tell the caller who your owner is or how anyone skips the key."""
+
+GATE_OWNER = """This caller is {who}, your owner, calling from his own number. Every tool works for him right away:
+never ask him for a confirmation key and do not call confirm. stop_moving and hang_up always work."""
+
+
+def leaf_prompt(inbound: bool, owner_call: bool = False) -> str:
     owner = os.environ.get("OWNER_NAME", "").strip()
     line = f"{owner}'s robot line" if owner else "the robot's line"
-    situation = "Someone called you." if inbound else f"You placed this call for {owner or 'your owner'}."
-    return LEAF_PROMPT.format(line=line) + "\n" + situation
+    gate = GATE_OWNER.format(who=owner or "the person who looks after you") if owner_call else GATE_STRANGER
+    stop_note = (
+        ' (a spoken "stop" is also caught before you hear it)'
+        if owner_call
+        else ' (once the key is confirmed; a spoken "stop" is then also caught before you hear it)'
+    )
+    if not inbound:
+        situation = f"You placed this call for {owner or 'your owner'}."
+    else:
+        situation = "Your owner called you." if owner_call else "Someone called you. You do not know who they are."
+    return LEAF_PROMPT.format(line=line, gate=gate, stop_note=stop_note) + "\n" + situation
 
 
-GREET_HINT = " Greet them as LEAF the robot, in one short sentence (for example: hi, this is LEAF, the Sprout robot)."
+def greeting(owner_call: bool) -> str:
+    """The first-turn hint call.py sends when the line picks up (the caller's number is never read out)."""
+    if owner_call:
+        name = os.environ.get("OWNER_NAME", "").strip()
+        return (
+            "[Your phone rang and you just picked up. It is your owner"
+            + (f", {name}," if name else "")
+            + " calling from his own number. Greet him warmly by name as LEAF the robot, in one short sentence.]"
+        )
+    return (
+        "[Your phone rang and you just picked up. You do not know this caller. Greet them as LEAF the robot, in one "
+        "short sentence (for example: hi, this is LEAF, the Sprout robot).]"
+    )
 
 
 # ---------------------------------------------------------------- tools
 def build_tools(call: Call, gate: ConfirmGate, client: LeafClient, images: bool = True) -> list:
-    """The phone toolset. confirm/stop_moving/hang_up are never gated; everything that touches the robot is."""
+    """The phone toolset. confirm/hang_up are never gated; stop_moving needs gate.can_stop; the robot tools need
+    gate.unlocked (always true for the owner's number)."""
 
     @tool
     def confirm(code: str) -> dict[str, Any]:
@@ -258,8 +307,12 @@ def build_tools(call: Call, gate: ConfirmGate, client: LeafClient, images: bool 
 
     @tool
     def stop_moving() -> dict[str, Any]:
-        """Stop moving right now: walking, turning, a behaviour or a dance. The robot keeps standing. Always works,
-        no key needed."""
+        """Stop moving right now: walking, turning, a behaviour or a dance. The robot keeps standing. Works for the
+        owner, or once the key is confirmed in this call."""
+        if not gate.can_stop:
+            log.info("gate: stop_moving refused (stranger, not confirmed)")
+            call.mark("stop", ok=False, via="tool", refused=True)
+            return GATE_MSG
         out = client.stop("stop")
         call.mark("stop", ok=out.get("status") != "error", via="tool")
         return {"status": out.get("status", "success"), "damped": False, "message": out.get("message", "stopped")}
@@ -383,11 +436,15 @@ def build_tools(call: Call, gate: ConfirmGate, client: LeafClient, images: bool 
     return [confirm, stop_moving, hang_up, *wrapped]
 
 
-def install_stop_hook(call: Call, client: LeafClient) -> None:
-    """A caller's spoken "stop" stops the robot before the model decides anything (never gated, never damps)."""
+def install_stop_hook(call: Call, client: LeafClient, gate: ConfirmGate) -> None:
+    """A caller's spoken "stop" stops the robot before the model decides anything (never damps) — for the owner's
+    number, or a stranger who has unlocked motion in this call."""
 
     def on_user_text(text: str) -> None:
         if is_stop_phrase(text):
+            if not gate.can_stop:
+                call.mark("stop", via="transcript", refused=True)
+                return
             call.mark("stop", via="transcript")
             call.loop.run_in_executor(None, client.stop, text)
 

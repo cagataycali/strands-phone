@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from strands.bidi.types.media import AudioDelta
 
+from .callerid import caller_from_invite, redact
 from .config import CALLER_ID, FRAME, MAX_CALL_S, PUBLIC_IP, RTP_PORT, SIP_PORT, VC_HOST
 from .resample import Down3, Up3
 from .rtp import Rtp
@@ -355,6 +356,9 @@ class InboundCall(Call):
         self.acked = asyncio.Event()
         self.local_tag = _tag()
         self.cseq = 100
+        self.caller_number: str | None = None  # E.164 from the INVITE's From, None = withheld (callerid.py)
+        self.caller = "withheld"
+        self.greeting: str | None = None  # a persona may set its own first-turn hint (leaf.py)
 
     def reply(self, code: str, h: dict[str, list[str]], addr, body: str = "", tag: bool = True) -> None:
         to = h["to"][0] + (f";tag={self.local_tag}" if tag and "tag=" not in h["to"][0] else "")
@@ -390,8 +394,9 @@ class InboundCall(Call):
             if body and (t := sdp_target(body)):
                 self.remote_media = t
             if first:
-                self.caller = h["from"][0].split("sip:")[1].split("@")[0] if "sip:" in h["from"][0] else "?"
-                self.mark("ringing", caller=self.caller, media=f"{self.remote_media}")
+                self.caller_number = caller_from_invite(h)  # E.164 or None (withheld) — spoofable, see callerid.py
+                self.caller = self.caller_number or "withheld"
+                self.mark("ringing", caller=redact(self.caller_number), media=f"{self.remote_media}")
                 self.got_invite.set()
             elif self.answered.is_set():
                 self.reply("200 OK", h, addr, body=self.sdp())  # retransmitted INVITE after our 200
@@ -444,7 +449,7 @@ class InboundCall(Call):
             return
         self.t0 = time.monotonic()
         self.events.clear()
-        self.mark("ringing", caller=self.caller)
+        self.mark("ringing", caller=redact(self.caller_number))
         tick = loop.create_task(self.clock())
         h, addr = self.invite  # type: ignore[misc]
         self.reply("180 Ringing", h, addr)
@@ -463,7 +468,7 @@ class InboundCall(Call):
             self.live = True
             self.mark("answered")
             recv = loop.create_task(self.pump())
-            await self.agent.send(GREET_INBOUND.format(caller=self.caller))
+            await self.agent.send(self.greeting or GREET_INBOUND.format(caller=self.caller))
             try:
                 await asyncio.wait_for(self.ended.wait(), MAX_CALL_S)
             except TimeoutError:

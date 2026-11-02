@@ -69,14 +69,18 @@ def make_leaf_agent(call: Call, inbound: bool = False) -> BidiAgent:
 
     model = make_model()
     client = leaf.LeafClient()
-    gate = leaf.ConfirmGate()
+    # inbound: the INVITE's From number (call.caller_number, E.164 or None = withheld); outbound calls are strangers
+    gate = leaf.ConfirmGate.for_caller(getattr(call, "caller_number", None) if inbound else None)
     images = os.environ.get("MODEL_PROVIDER", "nova").lower() == "openai"  # Nova Sonic takes no images
     call.leaf_gate = gate
-    leaf.install_stop_hook(call, client)
+    call.mark("caller", owner=gate.owner)
+    if inbound:
+        call.greeting = leaf.greeting(gate.owner)
+    leaf.install_stop_hook(call, client, gate)
     return BidiAgent(
         model=model,
         tools=leaf.build_tools(call, gate, client, images=images),
-        system_prompt=os.environ.get("SYSTEM_PROMPT") or leaf.leaf_prompt(inbound),
+        system_prompt=os.environ.get("SYSTEM_PROMPT") or leaf.leaf_prompt(inbound, owner_call=gate.owner),
     )
 
 
